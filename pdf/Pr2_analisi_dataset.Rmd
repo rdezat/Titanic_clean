@@ -1,0 +1,490 @@
+---
+title: "Pr3_Anàlisis_dades_titanic"
+author: "Ricard Deza Tripiana"
+date: '`r format(Sys.Date(),"%e de %B, %Y")`'
+output:
+  pdf_document:
+    toc: true
+    df_print: kable
+  html_document:
+    toc: true
+    df_print: kable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,tidy.opts=list(width.cutoff=80),tidy=TRUE)
+```
+
+```{r load_libraries, include=FALSE}
+library(knitr)
+library(VIM)
+library(pROC)
+
+library(stringr)
+library(car)
+library(psych)
+library(pROC)
+```
+
+# 1. Descripció del dataset
+
+>*Perquè és important i quina pregunta/problema pretén respondre?*
+
+El dataset que tractarem en aquesta pràctica contè les dades dels passatger del Titanic. Com ja sabem, el Titanic va ser una embarcació transatlàntica la qual va patir un accident i naufragà en el seu viatge de inauguració.
+
+L'objectiu d'aquesta pràctica és la neteja, tractament i anàlisis de les dades per tal de poder respondre a la pregunta sobre si existeix algun grup de passatgers amb més probabilitats de sobreviure a l'accident.
+
+En primer lloc, per tal de poder analitzar el conjunt de dades, llegirem els fitxers proporcionats. Disposem de dos fitxers, train i test, per tal de poder generar un model i poder provar-lo. A partir d'ara sempre parlarem del conjunt de dades d'entrenament. En el cas que es tracti del conjunt de prova, ho especificarem.
+
+```{r ruta, include=FALSE}
+# Montem la ruta del fitxer
+ruta <- "C:\\Users\\carla\\Desktop\\Ricard\\3_Tercer Quadrimestre\\Tipologia i cicle de vida de les dades\\Pràctica2\\Titanic\\csv\\"
+```
+
+```{r lectura , collapse=TRUE}
+# Lectura del fitxer en un dataframe (train)
+passatgers <- read.csv(paste(ruta, "train.csv", sep = ""), header = TRUE, sep = ",", na.strings = "NA", encoding = "UTF-8")
+# Lectura del fitxer en un dataframe (test)
+passatgers_test <- read.csv(paste(ruta, "test.csv", sep = ""), header = TRUE, sep = ",", na.strings = "NA", encoding = "UTF-8")
+# Primers registres del datatset
+kable(head(passatgers[,1:6]))
+head(passatgers[,7:12])
+```
+
+El dataset conté les dades de 891 passatgers i 12 variables per cadascún d'ells:
+
+```{r n_row_col, collapse=TRUE}
+# Número de passatgers
+nrow(passatgers)
+# Número de variables
+ncol(passatgers)
+```
+
+Aquestes variables són les següents:
+
+```{r nom_var, collapse=TRUE}
+# Nom de les variables
+labels(passatgers)[2]
+```
+
+La primera variable, *PassangerId*, tan sols identifica el passatger amb un identificador numèric seqüencial.  
+La variable *Survived* indica si el passatger va sobreviure al accident, indicant un 1 si va sobreviure o un 0 en el cas contrari.  
+La variable *Pclass* indica la classe socio-econòmica del passatger. En aquest cas tenim els valors 1, 2 i 3 corresponents a primera, segona i tercera classe, respectivament.  
+La variable *Name* conté el nom dels passatger.  
+La variable *Sex* indica el sexe del passatger. Observant les dades veiem que es descriu amb __male__ als homes i __female__ a les dones.  	
+La variable *Age* indica l'edat en anys del passatger. En el cas que l'edat sigui menor a 1 any, aquesta serà fraccionada. En el cas que sigui estimada, serà del tipus xx.5.	
+La variable *SibSp* indica el nombre de germans o cònjugues a bord del Titanic.  
+La variable *Parch* indica el nombre de pares o fills a bord del Titanic. En el cas que un menor viatgés acompanyat de una cuidadora, el valor d'aquesta variable és 0.  
+La variable *Ticket* indica el codi del ticket d'embarcament.  
+La variable *Fare* indica la tarifa que va pagar el passatger.  	
+La variable *Cabin* indica el codi del camarot que ocupava el passatger en l'embarcació.  
+Finalment, la variable *Embarked* indica el port en el qual pujà a bord del vaixell. Els valors són: __C__ = Cherbourg, __Q__ = Queenstown i __S__ = Southampton.  
+
+# 2. Integració i selecció de les dades d'interès a analitzar
+
+Per tal de realitzar l'anàlisis, ens quedarem amb les variables d'interès per tal de predir la probabilitat de sobreviure. Considerem que aquestes variables seran:  
+
+ - Survived
+ - Pclass
+ - Sex
+ - Age
+ - SibSp
+ - Parch
+
+La resta de variables considerem que no son rellevants per tal d'establir una predicció de supervivència. En el cas de les variables *PassangerId*, *Name*, *Ticket*, *Embarked* són identificadors que entenem que no afectaran en la probabilitat de sobreviure.  
+En el cas de la variable *Cabin*, si realitzem un petit anàlisis observem que conté molts valors perduts.  
+Per últim, en el cas de la variable *Fare* veiem una multicol·linealitat amb la variable *Pclass*:
+
+```{r grafic}
+# Mostrem gràfica comparant Pclass i Fare
+stripchart(passatgers$Pclass~passatgers$Fare,pch=19)
+```
+
+Com s'observa en el gràfic, no s'inclou la variable *Fare*, degut que existeix una dependència entre les variables *Pclass* i *Fare* Això implica un problema de multicol·linealitat, la qual cosa ocasiona efectes molt importants en les estimacions i els resultats poden ser confusos.
+
+# 3. Neteja de les dades
+
+Abans de netejar les dades, procedirem a realitzar una primera revisió d'aquestes.
+
+La variable *Survived* hauria d'estar factoritzada amb els valors 0 i 1. Si realitzem un resum de la variable, obtenim:
+
+```{r resum_survived, collapse=TRUE}
+# Resum de la variable Survived
+summary(passatgers$Survived)
+```
+
+Com veiem, no s'està detectant la variable com un factor, per tant, l'haurem de factoritzar.
+
+```{r factor_survived, collapse=TRUE}
+# Factoritzem la variable Survived
+passatgers$Survived <- as.factor(passatgers$Survived)
+is.factor(passatgers$Survived)
+```
+
+Si realitzem un resum de la variable ara, observem com tenim 342 supervivents i 549 no supervivents:
+
+```{r resum_survived_2, collapse=TRUE}
+# Resum de la variable Survived
+summary(passatgers$Survived)
+```
+
+En el cas de la variable *Pclass*, ens passa el mateix. La variable hauria d'estar factoritzada amb els valors 1, 2 i 3. Si realitzem un resum de la variable, obtenim:
+
+```{r resum_pclass, collapse=TRUE}
+# Resum de la variable Pclass
+summary(passatgers$Pclass)
+```
+
+Com veiem, no s'està detectant la variable com un factor, per tant, l'haurem de factoritzar.
+
+```{r factor_pclass, collapse=TRUE}
+# Factoritzem la variable Pclass
+passatgers$Pclass <- as.factor(passatgers$Pclass)
+passatgers_test$Pclass <- as.factor(passatgers_test$Pclass)
+is.factor(passatgers$Pclass)
+```
+
+Si realitzem un resum de la variable ara, observem com tenim 216 passatgers de primera classe, 184 de segona classe i 491 de tercera classe:
+
+```{r resum_pclass_2, collapse=TRUE}
+# Resum de la variable Pclass
+summary(passatgers$Pclass)
+```
+
+Si observem la variable *Sex*, observem com tenim 314 dones i 577 homes:
+
+```{r resum_sex, collapse=TRUE}
+# Resum de la variable Sex
+summary(passatgers$Sex)
+```
+
+En aquest cas no hem de realitzar cap tractament d'inici.
+
+Si analitzem la variable *Age*, observem el següent resum:
+
+```{r resum_age, collapse=TRUE}
+# Resum de la variable Age
+summary(passatgers$Age)
+```
+
+Veiem que apareixen molts valors NA. Aquesta casuística la tractarem més endavant.
+
+Respecte la variable *SibSp*, observem el següent:
+
+```{r resum_sibSp, collapse=TRUE}
+# Resum de la variable SibSp
+summary(passatgers$SibSp)
+```
+
+En aquest cas, no veiem cap valor NA, però veiem un valor que s'allunya molt de la mitjana i observem zeros. Aquesta casuística també la tractarem més endavant.
+
+Per últim, analitzem la variable *Parch*:
+
+```{r resum_parch, collapse=TRUE}
+# Resum de la variable Parch
+summary(passatgers$Parch)
+```
+
+Com en el cas anterior, no veiem cap valor NA, però veiem un valor que s'allunya molt de la mitjana i observem zeros.
+
+## 3.1 Les dades contenen zeros o elements buits? Com gestionaries aquests casos?
+
+Hem observat que tenim variables amb elements buits (NA) o que contenen zeros. Procedim a gestionar aquestes casuístiques.
+
+Pel que fa a la variable *Age*, hem vist que conté 177 registres sense l'edat informada. Considerarem que no va nèixer cap nen o nena durant el viatge. Entenem que una edat 0 no pot ser, per tant, per solucionar aquest escenari, imputarem els valors perduts utilitzant el mètode dels k-veïns més propers usant la distància de Gower.
+
+```{r kNN_age, collapse=TRUE}
+# Mètode KNN per imputar valors perduts
+passatgers_2 <- kNN(passatgers)[,1:12]
+passatgers_test <- kNN(passatgers_test)[,1:12]
+summary(passatgers_2$Age)
+```
+
+Podem observar com ja no tenim cap passatger amb el valor de la variable *Age* buit.  
+
+Pel que fa a les variables *SibSp* i *Parch*, contenen valors zeros. En el cas de la variable *SibSp* és una casuística plausible degut que un passatger podria viatgar sense germans ni cònjugues (fill únic i solter, o simplement viatja sol). En el cas de la variabl *Parch* abans hem comentat que si un menor viatjava acompanyat de una cuidadora, el valor d'aquesta variable és 0.
+
+## 3.2 Identificació i tractament de valors extrems
+
+Per tal d'identificar possibles valors extrems, mostrarem gràfics de caixa per les variables *Age*, *SibSp* i *Parch*:
+
+```{r boxplot}
+# Boxplots Age, SibSp i Parch
+variables <- c("Age", "SibSp", "Parch")
+for (name in variables){
+  boxplot(passatgers_2[,name], main=name)
+}
+```
+
+Els extrems que es mostren en els gràfics són el següents:
+
+```{r outs, collapse=TRUE}
+# Valors extrems
+boxplot.stats(passatgers_2$Age)$out
+boxplot.stats(passatgers_2$SibSp)$out
+boxplot.stats(passatgers_2$Parch)$out
+```
+
+Podem observar que el valors extrems de la variable *Age* entren dins de la realitat.  
+En el cas de la variable *SibSp*, veiem valors extrems de 3, 4, 5 i 8 germans i cònjugues. Els tres primers casos, són molt probables, sabent que són dades de gent de principi del segle XX. En el cas del valor 8, tenim els següents passatgers:
+
+```{r outs_sibsp, collapse=TRUE}
+# Passatgers amb 8 germans i cònjugues
+passatgers[which(passatgers$SibSp == 8),1:6]
+passatgers[which(passatgers$SibSp == 8),7:12]
+# Passatgers amb 8 germans i cònjugues (test)
+passatgers_test[which(passatgers_test$SibSp == 8),1:6]
+passatgers_test[which(passatgers_test$SibSp == 8),7:12]
+```
+
+Podem observar que es tracta de 9 germans, és a dir, en principi la dada *SibSp* és correcta.
+
+Si observem el valor extrem 5 per la variable *SibSp* i fem les mateixes comprovacions, veurem que el valor també és és correcte:
+
+```{r outs_sibsp_2, collapse=TRUE}
+# Passatgers amb 5 germans i cònjugues
+passatgers[which(passatgers$SibSp == 5),1:6]
+passatgers[which(passatgers$SibSp == 5),7:12]
+# Passatgers amb 5 germans i cònjugues (test)
+passatgers_test[which(passatgers_test$SibSp == 5),1:6]
+passatgers_test[which(passatgers_test$SibSp == 5),7:11]
+```
+
+Si observesim els altres valor de *SibSp*, ens trobaríem que els valors també són correctes.  
+
+Pel que fa a la variable *Parch*, ens surten valors extrems igual a 1. Això vol dir que la gran màjoria de passatgers viatjaven sense pares o fills, o bé menors acompanyats per una cuidadora. Si realitzem l'anàlisis sense tenir en compte aquests valors veiem el següent:
+
+```{r outs_parch, collapse=TRUE}
+# Valors extrems sense 0
+boxplot.stats(passatgers_2$Parch[which(passatgers_2$Parch != 0)])$out
+```
+
+Ara veiem que els valors extrems són 4, 5 i 6. Fem un anàlisis del valor 6:
+
+```{r outs_parch_2, collapse=TRUE}
+# Passatgers amb 6 pares o fills
+passatgers[which(passatgers$Parch == 6),1:6]
+passatgers[which(passatgers$Parch == 6),7:12]
+# Passatgers amb 6 pares o fills (test)
+passatgers_test[which(passatgers_test$Parch == 6),1:6]
+passatgers_test[which(passatgers_test$Parch == 6),7:12]
+```
+
+Observem que corresponen als pares dels germans 'Goodwin'. El que ens fa pensar és que dels pares dels 9 germans 'Sage' no tenim les dades.  
+
+Si observesim els altres valor de *Parch*, ens trobaríem que els valors també són correctes. 
+
+# 4. Anàlisi de les dades
+
+L'objectiu que ens hem plantjat és estimar un model de regressió logística amb variable dependent *Survived* i com regressors, Pclass, Sex, Age, SibSp i Parch. 
+
+#4.1 Selecció dels grups de dades que es volen analitzar/comparar (planificació dels anàlisis a aplicar).
+
+En primer lloc, recodifiquem les variables *Pclass* i *Sex* de la següent forma:
+
+```{r recode, collapse=TRUE}
+library(car)
+passatgers_2$Pclass <- recode(passatgers_2$Pclass,"1='H';2='M';3='L'")
+summary(passatgers_2$Pclass)
+passatgers_2$Sex <- recode(passatgers_2$Sex,"'male'='M';'female'='F'")
+summary(passatgers_2$Sex)
+```
+
+A continuació creem les variables noves *PclassR* i *SexR* reordenades amb els valors de referència __H__ i __F__ respectivament:
+
+```{r reorder, collapse=TRUE}
+# Reordenem la variable Pclass en la nova variable PclassR
+passatgers_2$PclassR <- relevel(passatgers_2$Pclass, ref = "H")
+head(passatgers_2$PclassR)
+# Reordenem la variable Sex en la nova variable SexR
+passatgers_2$SexR <- relevel(passatgers_2$Sex, ref = "F")
+head(passatgers_2$SexR)
+```
+
+#4.2 Comprovació de la normalitat i homogeneïtat de la variància.
+
+Si apliquem el model i realitzem la prova de homogeneïtat de variancies amb un nivell de significància del 0,05, obtenim el següent:
+
+```{r model_logistic, collapse=TRUE}
+# Generem el model
+model_logit <- glm(passatgers_2$Survived ~ passatgers_2$PclassR 
+                   + passatgers_2$SexR + passatgers_2$Age + passatgers_2$SibSp
+                   + passatgers_2$Parch, family = "binomial")
+summary(model_logit)
+```
+
+Veiem que tots els regressors són significants, excepte *Parch*.
+
+#4.3 Aplicació de proves estadístiques per comparar els grups de dades. En funció de les dades i de l'objectiu de l'estudi, aplicar proves de contrast d'hipòtesis, correlacions, regressions, etc.
+
+Com que hem observat que la variable *Parch*, no és significant, crearem un model prescindint d'aquesta variables:
+
+```{r model_logistic_2, collapse=TRUE}
+# Generem el model sense Parch
+model_logit_2 <- glm(passatgers_2$Survived ~ passatgers_2$PclassR 
+                   + passatgers_2$SexR + passatgers_2$Age + passatgers_2$SibSp
+                   , family = "binomial")
+summary(model_logit_2)
+```
+
+Per tal de escollir el millor model, extraiem l'AIC de cadascun d'ells i els comparem entre si per tal de triar el menor:
+
+```{r AIC, message=FALSE, warning=FALSE, collapse=TRUE}
+AIC(model_logit)
+AIC(model_logit_2)
+```
+
+Com podem observar, el segon model sense la variable *Parch* és millor que el primer model calculat.
+
+Amb aquest model, els coeficients de regressió són els següents:
+
+```{r coefficients, collapse=TRUE}
+# Coeficients de regressió
+coeff_beta <- coefficients(model_logit_2)
+coeff_beta
+```
+
+Per tant el model de regressió logística és:
+$$Prob(Y_i=1)=\frac{exp(\beta_0 + \beta_1PclassRM_i + \beta_2PclassRL_i
++ \beta_3SexR_i + \beta_4Age_i+ \beta_5SibSp_i)}{1 + exp(\beta_0 + \beta_1PclassRM_i + \beta_2PclassRL_i
++ \beta_3SexR_i + \beta_4Age_i+ \beta_5SibSp_i)}$$
+
+Segons els valors obtinguts podem realitzar els anàlisis següents:
+
+ - El coeficient d'intersecció no té sentit analitzar-lo degut que la variable *Age* no pot ser 0.
+ - Si l'individu pertany a la classe 'H' (primera classe), la probabilitat de sobreviure depèn de la resta de variables *Age*, *SexR* i *SibSp*.
+ - Si l'individu pertany a la classe 'M' (segona classe), la probabilitat de sobreviure disminueix. De la mateixa forma, si pertany a la classes 'L' (tercera classe), la probabilitat de sobreviure disminueix encara més.
+ - Si l'individu és dona, la probabilitat de sobreviure depèn de la resta de variables *PclassRL*, *PclassRM*, *Age* i *SibSp*.
+ - Si l'individu és home, la probabilitat de sobreviure disminueix.
+ - Com més edat tingui l'individu, menys probabilitat de sobreviure té.
+ - Com més germans i/o cónjugues tingués a bord, menys probabilitat de sobreviure té.  
+
+Passem a anlitzar la qualitat d'ajust del model creat. En primer lloc, creem un dataframe on la primera columna sigui les observacións dels nostre conjunt de dades si un individu sobreviu o no, és a dir, la variable *Survived*, i la segona columna sigui els valors predits pel model anterior amb un llindar de discriminació del 70%:
+
+```{r prediccio, message=FALSE, warning=FALSE, collapse=TRUE}
+# Calculem els valors predits
+valors_predits <- predict(model_logit_2,passatgers_2,type = "response")
+head(valors_predits)
+# Interpretem els resultats amb el llindar indicat
+clase_predita <- ifelse(valors_predits>0.7, 1,0)
+head(clase_predita)
+# Montem el data set a analitzar
+data <- data.frame(obs = passatgers_2$Survived, pre = clase_predita)
+kable(data.frame(Observació=head(data$obs),
+                 Predicció=head(data$pre)), align = c("l","l"))
+```
+
+# 5. Representació dels resultats a partir de taules i gràfiques.
+
+Amb aquests resultats obtingut, podem montar una taula de doble entrada amb cadascuna de les variables anterior i obtenim la matriu de confusió.
+
+```{r matriu_confusio, message=FALSE, warning=FALSE, collapse=TRUE}
+# Montem la matriu de confusió
+matriu_confusio <- table(data$obs, data$pre, dnn = c("Observació", "Predicció"))
+matriu_confusio
+```
+
+Podem veure com tenim 19 falsos positius i 162 falsos negatius. Els falsos positius són aquells, en el nostre cas, que no sobreviuen i el model ha predit que si. En contra, els falsos negatius són aquells que sobreviuen i el model a predit que no.
+
+En les següents taules mostrem els valors interessants que es poden extreure de la matriu de confusió:
+
+```{r analisi_model, message=FALSE, warning=FALSE, collapse=TRUE}
+# Valors descriptius de la predicció
+positius <- sum(data$obs == 1)
+negatius <- sum(data$obs == 0)
+positius_predit <- sum(data$pre == 1)
+negatius_predit <- sum(data$pre == 0)
+total <- nrow(data)
+kable(data.frame(Mesura=c("Positius", "Negatius", "Positius predits", "Negatius Predits"),
+                 Valor=c(positius, negatius, positius_predit, negatius_predit)), align = c("l","l","l","l"))
+
+tp <- sum(data$obs == 1 & data$pre == 1)
+tn <- sum(data$obs == 0 & data$pre == 0)
+fp <- sum(data$obs == 0 & data$pre == 1)
+fn <- sum(data$obs == 1 & data$pre == 0)
+kable(data.frame(Mesura=c("Certs positius", "Certs negatius", "Falsos positius", "Falsos negatius"),
+                 Valor=c(tp,tn,fp,fn)), align = c("l","l","l","l"))
+
+exactitut <- (tp+tn)/total
+ratio_error <- (fp+fn)/total
+sensibilitat <- tp/positius
+especificitat <- tn/negatius
+precisio <- tp/positius_predit
+valor_pre_neg <- tn/negatius_predit
+kable(data.frame(Mesura=c("Exactitud", "Ratio d'error", "Sensibilitat", "Especificitat", "Precisió", "Valor de predicció de negatius"),
+                 Valor=c(exactitut, ratio_error, sensibilitat, especificitat, precisio, valor_pre_neg)), align = c("l","l","l","l","l","l"))
+```
+
+Ara mostrem un gràfic amb la comparació de la probabilitat de sobreviure amb la classe dels individus:
+
+```{r grafic_2, message=FALSE, warning=FALSE, collapse=TRUE}
+stripchart(valors_predits~passatgers_2$PclassR,pch=19)
+```
+
+Com podem veure en aquest gràfic, hi ha una lleugera tendència a augmentar la probabilitat de sobreviure quan la classe és superior. Però observem casos classes __L__ amb una probabilitat alta de sobreviure.  
+Si extreiem els individus de classe baixa amb una probabilitat superior al 70% de sobreviure, trobem el següent:
+
+```{r individu, message=FALSE, warning=FALSE}
+passatgers_2$Ppre <- valors_predits
+passatgers_2$Pre <- data$pre
+p_low_sur_pre <- passatgers_2[which(passatgers_2$Ppre >= 0.7 & passatgers_2$PclassR == 'L'),]
+kable(head(p_low_sur_pre[4:7]))
+```
+
+Podem observar que tots els individus són dones amb una edat menor a 21 anys. Com hem dit, el fet de ser dona fa pujar la probabilitat de sobreviure, com també l'augmenta tenir una edat baixa.
+
+Si mostrem un gràfic amb la comparació de la probabilitat de sobreviure amb la edat dels individus:
+
+```{r grafic_3, message=FALSE, warning=FALSE, collapse=TRUE}
+stripchart(valors_predits~passatgers_2$Age,pch=19)
+```
+
+Com podem veure en aquest gràfic, hi ha una lleugera tendència a augmentar la probabilitat de sobreviure quan la edat és menor. Però observem casos de baixa edat amb poca probabilitat de sobreviure i casos de edad avançada amb alta probabilitat.  
+Si extreiem els individus de baixa edat (primer quartil) amb una probabilitat inferior al 20% de sobreviure, trobem el següent:
+
+```{r individu_2, message=FALSE, warning=FALSE}
+p_lage_sur_pre <- passatgers_2[which(passatgers_2$Ppre <= 0.2 & passatgers_2$Age <= quantile(passatgers_2$Age)[2]),]
+kable(head(p_lage_sur_pre[3:7]))
+```
+
+Podem observar que la majoria dels individus són homes i tots de classe baixa. Com hem dit, el fet de ser home disminueix la probabilitat de sobreviure, com també pertànyer a la tercera classe.  
+
+Si extreiem els individus de edat avançada (tercer quartil) amb una probabilitat superior al 70% de sobreviure, trobem el següent:
+
+```{r individu_3, message=FALSE, warning=FALSE}
+p_hage_sur_pre <- passatgers_2[which(passatgers_2$Ppre >= 0.7 & passatgers_2$Age >= quantile(passatgers_2$Age)[4]),]
+kable(head(p_hage_sur_pre[3:7]))
+```
+
+Podem observar que la majoria dels individus són dones de classe alta.  
+
+Per últim, si mostrem un gràfic amb la comparació de la probabilitat de sobreviure amb el sexe dels individus:
+
+```{r grafic_4, message=FALSE, warning=FALSE, collapse=TRUE}
+stripchart(valors_predits~passatgers_2$SexR,pch=19)
+```
+
+Veiem clarament, que la probabilitat de sobreviure és major en els casos de les dones que en els casos de les dones.
+
+Per tal de mostrar la qualitat del model, podem mostrar la corba ROC associada:
+
+```{r roc, message=FALSE, warning=FALSE, collapse=TRUE}
+# Calculem la corba ROC
+roc <- roc(passatgers$Survived,valors_predits) 
+# Mostrem la corba calculada en un gràfic
+plot(roc, print.thres="best", print.thres.best.method="closest.topleft")
+```
+
+Com podem veure, la forma de la corba s'aproxima molt a la cantonada superiror-esquerra del gràfic, la qual cosa indica que la qualitat del model és alta. Una altra dada que és pot extreure del gràfic anterior és el llindar òptim, és a dir, el llindar de discriminació que maximitza la sensibilitat i la especificitat del model, o amb altres paraules, el que minimitza els falsos positius i falsos negatius.
+
+Si apliquem aquest llindar al model, obtenim la matriu de confusió següent:
+
+```{r matriu_confusio_2, message=FALSE, warning=FALSE, collapse=TRUE}
+clase_predita_2 <- ifelse(valors_predits>0.407, 1,0)
+# Montem el data set a analitzar
+data_2 <- data.frame(obs_2 = passatgers_2$Survived, pre_2 = clase_predita_2)
+# Montem la matriu de confusió
+matriu_confusio_2 <- table(data_2$obs_2, data_2$pre_2, dnn = c("Observació", "Predicció"))
+matriu_confusio_2
+```
+
