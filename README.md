@@ -26,4 +26,4 @@ En la carpeta **csv** es troba l'arxiu _.csv_ amb el conjunt de dades resultat d
 
 1. Squire, M. (2015). _Clean Data_. Packt Publishing Ltd.
 2. Osborne, J.W. (2010). _Data Cleaning Basics: Best Practices in Dealing with Extreme Scores_. Newborn and Infant Nursing Reviews; 10 (1): pp. 1527-3369.
-3. Dalgaard, P. (2008). _Introductory statistics with R. Springer Science & Business Media.
+3. Dalgaard, P. (2008). _Introductory statistics with R_. Springer Science & Business Media.
