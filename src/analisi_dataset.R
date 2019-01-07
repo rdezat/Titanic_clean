@@ -173,19 +173,33 @@ kable(data.frame(Observació=head(data$obs),
 matriu_confusio <- table(data$obs, data$pre, dnn = c("Observació", "Predicció"))
 matriu_confusio
 
+library(pROC)
+# Calculem la corba ROC
+roc <- roc(passatgers$Survived,valors_predits) 
+# Mostrem la corba calculada en un gràfic
+plot(roc, print.thres="best", print.thres.best.method="closest.topleft")
+
+
+clase_predita_2 <- ifelse(valors_predits>0.407, 1,0)
+# Montem el data set a analitzar
+data_2 <- data.frame(obs_2 = passatgers_2$Survived, pre_2 = clase_predita_2)
+# Montem la matriu de confusió
+matriu_confusio_2 <- table(data_2$obs_2, data_2$pre_2, dnn = c("Observació", "Predicció"))
+matriu_confusio_2
+
 # Valors descriptius de la predicció
-positius <- sum(data$obs == 1)
-negatius <- sum(data$obs == 0)
-positius_predit <- sum(data$pre == 1)
-negatius_predit <- sum(data$pre == 0)
-total <- nrow(data)
+positius <- sum(data_2$obs_2 == 1)
+negatius <- sum(data_2$obs_2 == 0)
+positius_predit <- sum(data_2$pre_2 == 1)
+negatius_predit <- sum(data_2$pre_2 == 0)
+total <- nrow(data_2)
 kable(data.frame(Mesura=c("Positius", "Negatius", "Positius predits", "Negatius Predits"),
                  Valor=c(positius, negatius, positius_predit, negatius_predit)), align = c("l","l","l","l"))
 
-tp <- sum(data$obs == 1 & data$pre == 1)
-tn <- sum(data$obs == 0 & data$pre == 0)
-fp <- sum(data$obs == 0 & data$pre == 1)
-fn <- sum(data$obs == 1 & data$pre == 0)
+tp <- sum(data_2$obs_2 == 1 & data_2$pre_2 == 1)
+tn <- sum(data_2$obs_2 == 0 & data_2$pre_2 == 0)
+fp <- sum(data_2$obs_2 == 0 & data_2$pre_2 == 1)
+fn <- sum(data_2$obs_2 == 1 & data_2$pre_2 == 0)
 kable(data.frame(Mesura=c("Certs positius", "Certs negatius", "Falsos positius", "Falsos negatius"),
                  Valor=c(tp,tn,fp,fn)), align = c("l","l","l","l"))
 
@@ -201,7 +215,7 @@ kable(data.frame(Mesura=c("Exactitud", "Ratio d'error", "Sensibilitat", "Especif
 stripchart(valors_predits~passatgers_2$Fare,pch=19)
 
 passatgers_2$Ppre <- valors_predits
-passatgers_2$Pre <- data$pre
+passatgers_2$Pre <- data_2$pre_2
 passatgers_2[which(passatgers_2$Ppre >= 0.7),]
 p_low_sur_pre <- passatgers_2[which(passatgers_2$Ppre >= 0.7 & passatgers_2$Fare <= quantile(passatgers_2$Fare)[2]),]
 p_low_sur_pre[4:7]
@@ -218,17 +232,3 @@ p_hage_sur_pre[3:7]
 head(p_hage_sur_pre[3:7])
 
 stripchart(valors_predits~passatgers_2$SexR,pch=19)
-
-library(pROC)
-# Calculem la corba ROC
-roc <- roc(passatgers$Survived,valors_predits) 
-# Mostrem la corba calculada en un gràfic
-plot(roc, print.thres="best", print.thres.best.method="closest.topleft")
-
-
-clase_predita_2 <- ifelse(valors_predits>0.407, 1,0)
-# Montem el data set a analitzar
-data_2 <- data.frame(obs_2 = passatgers_2$Survived, pre_2 = clase_predita_2)
-# Montem la matriu de confusió
-matriu_confusio_2 <- table(data_2$obs_2, data_2$pre_2, dnn = c("Observació", "Predicció"))
-matriu_confusio_2
